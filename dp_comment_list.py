@@ -10,16 +10,22 @@ Created on Thu Oct 18 23:33:46 2018
 import requests
 from bs4 import BeautifulSoup
 import re
+import css_analysis
+import time
 
+
+# svg转码字典
+_code_dict = {}
+_svg_css_href = ''
+# URL
 url = 'https://www.dianping.com/shop/77307732'
-html = ''
 
+# 代理
 # https://github.com/jhao104/proxy_pool
 url_get_proxy = 'http://123.207.35.36:5010/get/'
 def getProxy():
     return requests.get(url_get_proxy).content
-
-print(getProxy())
+#print(getProxy())
 
 def get_page(url):
     header = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36',
@@ -39,20 +45,63 @@ def get_page(url):
     return page.text
 
 
-def get_comment_all(url):
-    soup = BeautifulSoup(get_page(url))
-    comment_list = soup.find_all('ul', id='reviewlist-wrapper')
-    comment_item = soup.find_all('p', 'desc')
-    first_comment = comment_item[0]
-    # 获取 SVG 图片对应的CSS内容
+def get_comment(url):
+    # 获取SVG图片对应的CSS链接
     # https://www.crummy.com/software/BeautifulSoup/bs4/doc/index.zh.html#find-all
     css_links = soup.find_all('link', attrs={'rel':'stylesheet', 'href':re.compile("svgtextcss")})[0]
     svg_css_href = css_links['href']
     if svg_css_href.index('//') == 0:
-        svg_css_href = svg_css_href.replace('//', 'http://')
-    # SVG 图片对应的CSS内容
-    svg_css_content = requests.get(svg_css_href).text
-    # 解析CSS并制作字典
+        _svg_css_href = svg_css_href.replace('//', 'http://')
+    
+    # 制作SVG字典
+    if (len(_code_dict.keys()) < 1):
+        _code_dict = analysis()
+    
+    # 获取评论
+    soup = BeautifulSoup(get_page(url))
+    comment_item = soup.find_all('p', 'desc')
+    first_comment = comment_item[0]
+    real_comment = comment_decrypt(first_comment)
+    print(real_comment)
 
-def css_analysis(css_content):
+
+
+# 获取并返回完整的评论
+def comment_decrypt(comment):
+    comments = []
+    ret_comment = ''
+    for content in comment.contents:
+        if content.name == 'span':
+            class_name = content['class'][0]
+            print(class_name)
+            char = _code_dict[class_name[:3]][class_name[3:]]['char']
+            comments.append(char)
+        else:
+            comments.append(content.string)
+    ret_comment = ''.join(comments).replace('\xa0', ' ')
+    print(ret_comment)
+    return ret_comment
+
+# 根据class名称获取对应的汉字
+def get_char(class_name):
+    try:
+        return _code_dict[class_name[:3]][class_name[3:]]['char']
+    except:
+        _code_dict = analysis()
+        return get_char(class_name)
+
+# 解析CSS并返回字典
+def analysis():
+    # SVG 图片对应的CSS内容
+    css_content = requests.get(_svg_css_href).text
     print('解析CSS,并生成字典')
+    # 格式化成2016-03-20 11:45:39形式
+    print('start at ', time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    _code_dict = css_analysis.analysis(css_content)
+    print('end   at ', time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    return _code_dict
+
+
+if __name__ == "__main__":
+    print('Hello Python')
+
